@@ -104,8 +104,8 @@
   const LW = COLS * CELL, LH = ROWS * CELL;
   const START_DELAY = 180, MIN_DELAY = 110, SPEEDUP = 2.5;   // ms per move (slower than before)
 
-  // Paste your deployed leaderboard Worker URL here (no trailing slash), e.g. "https://snake-scores.yourname.workers.dev"
-  const API_URL = "";
+  // Deployed leaderboard Worker URL (no trailing slash; the game adds /scores itself)
+  const API_URL = "https://snake.bleepbloop-ai.workers.dev";
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
