@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snake</title>
+<style>
+  :root {
+    --bar: #4a752c; --page: #578a34; --a: #aad751; --b: #a2d149;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--page); display: flex; align-items: center; justify-content: center;
+    font-family: "Google Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  .game { width: min(96vw, 680px, calc((100vh - 24px) * 17 / 16.6)); }
+  .bar {
+    background: var(--bar); color: #fff; height: 56px; padding: 0 18px;
+    display: flex; align-items: center; justify-content: center; gap: 36px;
+    border-radius: 8px 8px 0 0; font-size: 22px; font-weight: 600;
+  }
+  .stat { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+  .stat svg { width: 30px; height: 30px; }
+  .stage { position: relative; line-height: 0; }
+  canvas { width: 100%; display: block; border-radius: 0 0 8px 8px; touch-action: none; outline: none; }
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 14px; line-height: 1.3; text-align: center; color: #fff;
+    background: rgba(30, 55, 15, .45); border-radius: 0 0 8px 8px;
+    opacity: 0; pointer-events: none; transition: opacity .25s ease;
+  }
+  .overlay.show { opacity: 1; }
+  .overlay h2 { margin: 0; font-size: clamp(24px, 6vw, 40px); font-weight: 700; }
+  .overlay p { margin: 0; font-size: clamp(14px, 3.2vw, 18px); opacity: .92; }
+  .overlay button {
+    pointer-events: none; font: inherit; font-weight: 700; font-size: clamp(16px, 3.6vw, 20px);
+    color: #fff; background: #4e7cf6; border: 0; border-radius: 28px; padding: 12px 34px; cursor: pointer;
+    box-shadow: 0 3px 0 #2f55c4; transition: transform .1s ease;
+  }
+  .overlay.show button { pointer-events: auto; }
+  .overlay button:active { transform: translateY(2px); box-shadow: 0 1px 0 #2f55c4; }
+  .overlay button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .overlay { justify-content: flex-start; overflow-y: auto; padding: 14px; }
+  .overlay > * { flex: none; }
+  .overlay [hidden] { display: none !important; }
+  #ovTitle { margin-top: auto; }
+  #ovBtn { margin-bottom: auto; }
+  #nameForm { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #nameInput {
+    font: inherit; font-size: 16px; width: 180px; padding: 10px 16px; border: 0; border-radius: 24px;
+    color: #1f2b1a; background: #fff; pointer-events: none; text-align: center;
+  }
+  .overlay.show #nameInput { pointer-events: auto; }
+  #nameInput:focus-visible { outline: 3px solid #4e7cf6; outline-offset: 2px; }
+  #saveBtn { padding: 10px 22px; font-size: 16px; }
+  #saveBtn:disabled { opacity: .6; cursor: default; }
+  #boardNote { font-size: 13px; opacity: .88; margin-bottom: 4px; }
+  #board { list-style: none; margin: 0 auto; padding: 0; width: min(300px, 86%); font-size: 15px; line-height: 1.25; text-align: left; }
+  #board li { display: flex; gap: 8px; padding: 3px 8px; border-radius: 6px; }
+  #board .rk { width: 22px; opacity: .75; }
+  #board .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #board .me { background: rgba(255,255,255,.24); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="game">
+  <div class="bar">
+    <div class="stat" title="Score">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 8c3-3 9-2 9 5 0 7-5 13-9 13s-9-6-9-13c0-7 6-8 9-5z" fill="#e7471d"/><path d="M16 8c0-3 1-5 4-6-1 3-2 5-4 6z" fill="#7bc043"/></svg>
+      <span id="score">0</span>
+    </div>
+    <div class="stat" title="Best">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M9 4h14v7a7 7 0 0 1-14 0V4z" fill="#f7c936"/><path d="M9 6H4c0 5 2 8 5.500 8.500M23 6h5c0 5-2 8-5.500 8.500" fill="none" stroke="#f7c936" stroke-width="2.200"/><rect x="14" y="17" width="4" height="6" fill="#f7c936"/><rect x="10" y="23" width="12" height="4" rx="1.500" fill="#f7c936"/></svg>
+      <span id="best">0</span>
+    </div>
+  </div>
+  <div class="stage" id="stage">
+    <canvas id="game" tabindex="0" aria-label="Snake game board"></canvas>
+    <div class="overlay show" id="overlay">
+      <h2 id="ovTitle">Snake</h2>
+      <p id="ovSub">Press an arrow key, swipe, or tap to start</p>
+      <form id="nameForm" hidden autocomplete="off">
+        <input id="nameInput" maxlength="12" placeholder="Your name" aria-label="Your name" required>
+        <button id="saveBtn" type="submit">Save score</button>
+      </form>
+      <div id="boardWrap" hidden>
+        <div id="boardNote"></div>
+        <ol id="board"></ol>
+      </div>
+      <button id="ovBtn" type="button">Play</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const COLS = 17, ROWS = 15, CELL = 40;           // logical units
+  const LW = COLS * CELL, LH = ROWS * CELL;
+  const START_DELAY = 180, MIN_DELAY = 110, SPEEDUP = 2.5;   // ms per move (slower than before)
+
+  // Paste your deployed leaderboard Worker URL here (no trailing slash), e.g. "https://snake-scores.yourname.workers.dev"
+  const API_URL = "";
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const $ = id => document.getElementById(id);
+  const scoreEl = $("score"), bestEl = $("best"), overlay = $("overlay");
+  const ovTitle = $("ovTitle"), ovSub = $("ovSub"), ovBtn = $("ovBtn");
+  const nameForm = $("nameForm"), nameInput = $("nameInput"), saveBtn = $("saveBtn");
+  const boardWrap = $("boardWrap"), boardNote = $("boardNote"), boardEl = $("board");
+
+  const DIRS = { up: {x:0,y:-1}, down: {x:0,y:1}, left: {x:-1,y:0}, right: {x:1,y:0} };
+  const KEYMAP = { ArrowUp:"up", ArrowDown:"down", ArrowLeft:"left", ArrowRight:"right",
+                   w:"up", s:"down", a:"left", d:"right", W:"up", S:"down", A:"left", D:"right" };
+
+  let best = 0;
+  try { best = parseInt(localStorage.getItem("snake-best"), 10) || 0; } catch (e) {}
+  bestEl.textContent = best;
+
+  let snake, prev, dir, queue, food, foodBorn, score, delay, state, acc, last, deathAt, overTimer, grew;
+  // state: ready | running | paused | over | won
+
+  let runId = 0;
+
+  /* ---------- leaderboard (global via Worker, local fallback) ---------- */
+  const LOCAL_KEY = "snake-board";
+  const getLocal = () => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY)) || []; } catch (e) { return []; } };
+
+  async function loadBoard() {
+    if (API_URL) {
+      try {
+        const r = await fetch(API_URL + "/scores");
+        if (r.ok) return { rows: await r.json(), global: true };
+      } catch (e) {}
+    }
+    return { rows: getLocal(), global: false };
+  }
+
+  async function postScore(name, sc) {
+    if (API_URL) {
+      try {
+        const r = await fetch(API_URL + "/scores", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, score: sc })
+        });
+        if (r.ok) return { rows: await r.json(), global: true };
+      } catch (e) {}
+    }
+    const rows = getLocal();
+    rows.push({ name, score: sc, t: Date.now() });
+    rows.sort((a, b) => b.score - a.score || a.t - b.t);
+    rows.length = Math.min(rows.length, 10);
+    try { localStorage.setItem(LOCAL_KEY, JSON.stringify(rows)); } catch (e) {}
+    return { rows, global: false };
+  }
+
+  function renderBoard(res, me) {
+    boardWrap.hidden = false;
+    boardNote.textContent = res.global ? "Global top 10"
+      : API_URL ? "Can't reach the global board. Showing scores on this device."
+      : "Global board not connected. Showing scores on this device.";
+    boardEl.textContent = "";
+    let marked = false;
+    res.rows.slice(0, 10).forEach((r, i) => {
+      const li = document.createElement("li");
+      if (me && !marked && r.name === me.name && r.score === me.score) { li.className = "me"; marked = true; }
+      for (const [cls, txt] of [["rk", i + 1], ["nm", r.name], ["sc", r.score]]) {
+        const sp = document.createElement("span"); sp.className = cls; sp.textContent = txt; li.appendChild(sp);
+      }
+      boardEl.appendChild(li);
+    });
+    if (!res.rows.length) boardNote.textContent += " No scores yet.";
+  }
+
+  async function showGameOver() {
+    const id = runId, won = state === "won", sc = score;
+    showOverlay(won ? "You win!" : "Game over", (won ? "You filled the whole board! " : "") + "Score " + sc, "Play again");
+    boardWrap.hidden = false; boardNote.textContent = "Loading leaderboard…"; boardEl.textContent = "";
+    nameForm.hidden = sc <= 0;
+    saveBtn.disabled = false;
+    if (sc > 0) {
+      try { nameInput.value = localStorage.getItem("snake-name") || ""; } catch (e) {}
+      if (window.matchMedia("(pointer: fine)").matches) nameInput.focus();
+    }
+    const res = await loadBoard();
+    if (id === runId && !boardEl.children.length) renderBoard(res);
+  }
+
+  nameForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    const name = nameInput.value.trim().slice(0, 12), sc = score, id = runId;
+    if (!name) return;
+    saveBtn.disabled = true;
+    try { localStorage.setItem("snake-name", name); } catch (e2) {}
+    const res = await postScore(name, sc);
+    if (id !== runId) return;
+    nameForm.hidden = true;
+    renderBoard(res, { name, score: sc });
+    ovBtn.focus();
+  });
+
+  /* ---------- sizing (crisp on any screen) ---------- */
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(canvas.clientWidth * dpr);
+    canvas.width = w; canvas.height = Math.round(w * LH / LW);
+    canvas.style.height = "auto";
+    canvas.style.aspectRatio = LW + " / " + LH;
+  }
+  window.addEventListener("resize", resize);
+
+  /* ---------- game logic ---------- */
+  function reset() {
+    clearTimeout(overTimer); runId++;
+    const cy = Math.floor(ROWS / 2);
+    snake = [{x:5,y:cy},{x:4,y:cy},{x:3,y:cy}];
+    prev = snake.map(s => ({...s}));
+    dir = DIRS.right; queue = []; score = 0; delay = START_DELAY; acc = 0; grew = false;
+    state = "ready"; scoreEl.textContent = 0;
+    placeFood();
+    showOverlay("Snake", "Press an arrow key, swipe, or tap to start", "Play");
+  }
+
+  function placeFood() {
+    const taken = new Set(snake.map(s => s.x + "," + s.y));
+    const free = [];
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++)
+      if (!taken.has(x + "," + y)) free.push({x, y});
+    food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
+    foodBorn = performance.now();
+  }
+
+  function showOverlay(t, s, b) {
+    ovTitle.textContent = t; ovSub.textContent = s; ovBtn.textContent = b;
+    nameForm.hidden = true; boardWrap.hidden = true;
+    overlay.classList.add("show");
+  }
+  const hideOverlay = () => overlay.classList.remove("show");
+
+  function steer(name) {
+    const d = DIRS[name], ref = queue.length ? queue[queue.length - 1] : dir;
+    if (d === ref || (d.x === -ref.x && d.y === -ref.y) || queue.length >= 2) return;
+    queue.push(d);
+  }
+
+  function startOrToggle() {
+    if (state === "ready") { state = "running"; hideOverlay(); }
+    else if (state === "running") { state = "paused"; showOverlay("Paused", "Press Space to resume", "Resume"); return; }
+    else if (state === "paused") { state = "running"; hideOverlay(); }
+    else if (state === "over" || state === "won") { reset(); state = "running"; hideOverlay(); }
+    last = performance.now();
+  }
+
+  function tick() {
+    if (queue.length) dir = queue.shift();
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+    const hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS;
+    const eating = !hitWall && food && head.x === food.x && head.y === food.y;
+    const body = eating ? snake : snake.slice(0, -1);
+    if (hitWall || body.some(s => s.x === head.x && s.y === head.y)) { return finish("over"); }
+
+    prev = snake.map(s => ({...s}));
+    snake.unshift(head);
+    if (eating) {
+      prev.push({...prev[prev.length - 1]});            // new tail grows out of the old tail
+      score++; scoreEl.textContent = score;
+      delay = Math.max(MIN_DELAY, delay - SPEEDUP);
+      if (score > best) {
+        best = score; bestEl.textContent = best;
+        try { localStorage.setItem("snake-best", String(best)); } catch (e) {}
+      }
+      placeFood();
+      if (!food) finish("won");
+    } else snake.pop();
+  }
+
+  function finish(result) {
+    state = result; deathAt = performance.now(); acc = delay;   // freeze at the last full position
+    prev = snake.map(s => ({...s}));
+    overTimer = setTimeout(showGameOver, result === "won" ? 300 : 700);
+  }
+
+  /* ---------- drawing ---------- */
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const ease = t => t * t * (3 - 2 * t);
+
+  function draw(now) {
+    ctx.setTransform(canvas.width / LW, 0, 0, canvas.width / LW, 0, 0);
+
+    // checkerboard
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      ctx.fillStyle = (x + y) % 2 ? "#a2d149" : "#aad751";
+      ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+    }
+
+    // food (pops in with a little overshoot)
+    if (food) {
+      const k = Math.max(0, Math.min(1, (now - foodBorn) / 260));
+      const s = Math.max(0.01, k < 1 ? 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2) : 1);
+      drawApple((food.x + .5) * CELL, (food.y + .55) * CELL, s);
+    }
+
+    // snake positions, interpolated between ticks
+    const t = state === "running" || state === "paused" ? Math.min(1, acc / delay) : 1;
+    const P = (x, y) => ({ x: (x + .5) * CELL, y: (y + .5) * CELL });
+    const n = snake.length;
+    const H = P(lerp(prev[0].x, snake[0].x, t), lerp(prev[0].y, snake[0].y, t));
+    const pt = prev[n - 1] || snake[n - 1];
+    const T = P(lerp(pt.x, snake[n - 1].x, t), lerp(pt.y, snake[n - 1].y, t));
+    // Body path: moving head, then the fixed grid corners, then the moving tail tip.
+    // Corners never slide, so the shape stays rigid and doesn't wiggle.
+    const V = [H];
+    for (let i = 1; i < n; i++) V.push(P(snake[i].x, snake[i].y));
+    V.push(T);
+    const pts = V.filter((p, i) => i === 0 || Math.hypot(p.x - V[i - 1].x, p.y - V[i - 1].y) > 0.001);
+    // note: filter compares against the unfiltered neighbour, which is fine for duplicates
+
+    let alpha = 1;
+    if (state === "over") alpha = 0.55 + 0.45 * Math.abs(Math.cos((now - deathAt) / 110)) * Math.max(0, 1 - (now - deathAt) / 700);
+    ctx.globalAlpha = alpha;
+
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = "#4e7cf6"; ctx.lineWidth = CELL * 0.74;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    const R = CELL * 0.5, m = pts.length;
+    for (let i = 1; i < m - 1; i++) {
+      const d1 = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+      const d2 = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y);
+      const r = Math.min(R, d1 * (i === 1 ? 1 : 0.5), d2 * (i === m - 2 ? 1 : 0.5));
+      ctx.arcTo(pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y, r);
+    }
+    ctx.lineTo(pts[m - 1].x, pts[m - 1].y);
+    ctx.stroke();
+
+    // head
+    const h = H, px = -dir.y, py = dir.x;
+    ctx.fillStyle = "#4e7cf6";
+    ctx.beginPath(); ctx.arc(h.x, h.y, CELL * 0.42, 0, Math.PI * 2); ctx.fill();
+    for (const side of [-1, 1]) {
+      const ex = h.x + dir.x * CELL * 0.1 + px * side * CELL * 0.2;
+      const ey = h.y + dir.y * CELL * 0.1 + py * side * CELL * 0.2;
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, CELL * 0.14, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#1b2a5c"; ctx.beginPath();
+      ctx.arc(ex + dir.x * CELL * 0.05, ey + dir.y * CELL * 0.05, CELL * 0.075, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawApple(cx, cy, s) {
+    const r = CELL * 0.36 * s;
+    ctx.fillStyle = "rgba(0,0,0,.12)";
+    ctx.beginPath(); ctx.ellipse(cx, cy + r * 0.95, r * 0.8, r * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#e7471d";
+    ctx.beginPath();
+    ctx.arc(cx - r * 0.38, cy, r * 0.72, 0, Math.PI * 2);
+    ctx.arc(cx + r * 0.38, cy, r * 0.72, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy + r * 0.1, r * 0.85, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.35)";
+    ctx.beginPath(); ctx.ellipse(cx - r * 0.45, cy - r * 0.2, r * 0.18, r * 0.3, -0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#7bc043";                      // leaf
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r * 0.7);
+    ctx.quadraticCurveTo(cx + r * 0.2, cy - r * 1.5, cx + r * 0.95, cy - r * 1.25);
+    ctx.quadraticCurveTo(cx + r * 0.6, cy - r * 0.6, cx, cy - r * 0.7);
+    ctx.fill();
+  }
+
+  /* ---------- main loop ---------- */
+  function loop(now) {
+    if (state === "running") {
+      const boost = queue.length ? 4 : 1;     // a waiting turn fast-forwards to the next cell
+      acc += Math.min(now - last, 100) * boost;
+      if (boost > 1) acc = Math.min(acc, delay);
+      last = now;
+      while (acc >= delay && state === "running") { acc -= delay; tick(); }
+    }
+    draw(now);
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- input ---------- */
+  window.addEventListener("keydown", e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target instanceof HTMLInputElement) return;     // typing a name
+    const name = KEYMAP[e.key];
+    if (name) {
+      e.preventDefault();
+      if (state === "ready") startOrToggle();
+      if (state === "running") steer(name);
+    } else if (e.code === "Space") {
+      e.preventDefault(); if (!e.repeat) startOrToggle();
+    } else if (e.key === "r" || e.key === "R") {
+      reset();
+    } else if (e.key === "Enter" && state !== "running") {
+      e.preventDefault(); startOrToggle();
+    }
+  });
+
+  ovBtn.addEventListener("click", startOrToggle);
+
+  let tx = 0, ty = 0, swiped = false;
+  canvas.addEventListener("touchstart", e => {
+    const t = e.changedTouches[0]; tx = t.clientX; ty = t.clientY; swiped = false; e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener("touchmove", e => {
+    e.preventDefault();
+    const t = e.changedTouches[0], dx = t.clientX - tx, dy = t.clientY - ty;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+    const name = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+    tx = t.clientX; ty = t.clientY; swiped = true;          // re-anchor so chained swipes work
+    if (state === "ready") startOrToggle();
+    if (state === "running") steer(name);
+  }, { passive: false });
+  canvas.addEventListener("touchend", e => {
+    e.preventDefault();
+    if (!swiped && state !== "over" && state !== "won") startOrToggle();
+  }, { passive: false });
+
+  const autoPause = () => { if (state === "running") startOrToggle(); };
+  document.addEventListener("visibilitychange", () => { if (document.hidden) autoPause(); });
+  window.addEventListener("blur", autoPause);
+
+  resize();
+  reset();
+  requestAnimationFrame(t => { last = t; loop(t); });
+})();
+</script>
+</body>
+</html>
