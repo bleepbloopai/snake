@@ -205,6 +205,40 @@
     }
   }
 
+/* ---------- name filter: profanity, slurs, emails, phone numbers (incl. leetspeak like b1tch / a55 / 455 / 304) ---------- */
+const NAME_STRONG = ["fuck","fck","shit","bitch","cunt","pussy","asshole","dickhead","cocksucker","whore","slut","jizz","penis","vagina","dildo","blowjob","handjob","orgasm","bastard","wanker","bollocks","titties","tranny","shemale","retard","faggot","nigger","nigga","kike","chink","gook","wetback","hitler","kkk","rapist","porn","christkiller","christkillers","ethniccleansing","gaschamber","gaschambers","heilhitler","jewboy","jewboys","jewslur","jigaboo","jigaboos","kyke","kykes","lesbo","lesbos","masterrace","mohammedan","mohammedans","muslimterrorist","muslimterrorists","neonazi","neonazis","nazism","negroid","pickaninny","porchmonkey","porchmonkeys","racewar","racialpurity","raghead","ragheads","redskin","redskins","schutzstaffel","siegheil","swastika","thirdreich","towelhead","towelheads","trannies","whitegenocide","whitepower","whitesupremacist","whitesupremacy","zipperhead","zipperheads","spastic","mongoloid","fascist","fascists","jewess","nigguh","niggur"];
+const NAME_WEAK = ["ass","asses","arse","tit","tits","titty","boob","boobs","dick","dicks","cock","cocks","cum","anal","sex","hoe","hoes","thot","milf","horny","fag","fags","dyke","spic","spics","coon","negro","paki","pakis","beaner","prick","twat","rape","damn","hell","crap","nude","nudes","slag","homo","kys","fuk","fuking","fuker","nazi","nazis","ableist","ape","apes","barbarian","bigot","bigots","coons","cracker","crackers","cripple","crippled","curry","curryface","dykes","heathen","heathens","heeb","heebs","heil","homos","idiot","idiots","imbecile","infidel","infidels","injun","injuns","islamist","jap","japs","jew","jews","jewish","kraut","krauts","mong","monkey","monkeys","nip","nips","oriental","papist","papists","queer","reich","reichs","sambo","sambos","sieg","spade","spades","spaz","spick","spicks","squaw","squaws","tard","tards","teabag","teabags"];
+// letters may be stretched (fuuuck); a doubled letter in the word must stay doubled (ass != as)
+const nameRx = w => w.replace(/(.)\1*/g, (m, c) => c + (m.length > 1 ? "{" + m.length + ",}" : "+"));
+const STRONG_RX = NAME_STRONG.map(w => new RegExp(nameRx(w)));
+const WEAK_RX = NAME_WEAK.map(w => new RegExp("^" + nameRx(w) + "$"));
+const LEET = { "0":"o","1":"i","3":"e","4":"a","5":"s","7":"t","8":"b","9":"g","@":"a","$":"s","!":"i","+":"t","(":"c","|":"i","€":"e","£":"l" };
+const CALC = { ...LEET, "4":"h","7":"l" };                     // calculator spelling: 304 upside down = "hoe"
+const deleet = (t, map) => t.replace(/[0-9@$!+(|€£]/g, c => map[c] || c);
+function nameVariants(t) {
+  const v = [deleet(t, LEET), deleet(t, CALC)];
+  if (/\d/.test(t)) v.push(...v.map(x => [...x].reverse().join("")));   // reversed only when digits are involved
+  return v;
+}
+function isBadName(raw) {
+  const s = String(raw || "");
+  if (/@|https?:|www\.|\.(com|net|org|io|gg|co|me|us|edu|gov|xyz|app|dev)\b/i.test(s)) return true;           // emails / links
+  if (/\b(gmail|yahoo|hotmail|outlook|icloud|proton)\b|\bdot\s*com\b|[\[(]\s*at\s*[\])]/i.test(s)) return true;
+  if ((s.match(/\d/g) || []).length >= 7) return true;                                                          // phone numbers
+  const base = s.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  const skip = "[^a-z0-9@$!+(|€£]";
+  if (nameVariants(base.replace(new RegExp(skip, "g"), "")).some(v => STRONG_RX.some(r => r.test(v)))) return true;  // f.u.c.k
+  const toks = base.split(new RegExp(skip + "+")).filter(Boolean), joined = [];
+  let run = "";
+  for (const t of toks) { if (t.length === 1) run += t; else { if (run) joined.push(run); run = ""; joined.push(t); } }
+  if (run) joined.push(run);                                                   // "j e w" -> "jew"
+  for (const t of toks.concat(joined))
+    for (const c of [t, t.replace(/^\d+|\d+$/g, "")].filter(Boolean))                                            // ass69 -> ass
+      if (nameVariants(c).some(v => WEAK_RX.some(r => r.test(v)) || STRONG_RX.some(r => r.test(v)))) return true;
+  return false;
+}
+
+
   /* ---------- leaderboard (global via Worker, local fallback) ---------- */
   const LOCAL_KEY = "snake-board";
   const getLocal = m => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY + ":" + m)) || []; } catch (e) { return []; } };
@@ -248,7 +282,7 @@
       : "Global board not connected. Showing scores on this device.";
     boardEl.textContent = "";
     let marked = false;
-    res.rows.slice(0, 10).forEach((r, i) => {
+    res.rows.filter(r => !isBadName(r.name)).slice(0, 10).forEach((r, i) => {
       const li = document.createElement("li");
       if (me && !marked && r.name === me.name && r.score === me.score) { li.className = "me"; marked = true; }
       for (const [cls, txt] of [["rk", i + 1], ["nm", r.name], ["sc", r.score]]) {
@@ -272,6 +306,7 @@
     showOverlay(won ? "You win!" : "Game over", (won ? "You filled the whole board! " : "") + "Score " + sc, "Play again");
     boardWrap.hidden = false; boardNote.textContent = "Loading leaderboard…"; boardEl.textContent = "";
     let saved = ""; try { saved = localStorage.getItem("snake-name") || ""; } catch (e) {}
+    if (saved && isBadName(saved)) { saved = ""; try { localStorage.removeItem("snake-name"); } catch (e) {} }
     if (sc > 0 && saved) {                                   // name already known: save automatically
       nameForm.hidden = true; boardNote.textContent = "Saving score…";
       showSaved(saved);
@@ -289,10 +324,12 @@
     if (id === runId && !boardEl.children.length) renderBoard(res);
   }
 
+  nameInput.addEventListener("input", () => nameInput.setCustomValidity(""));
   nameForm.addEventListener("submit", async e => {
     e.preventDefault();
     const name = nameInput.value.trim().slice(0, 12), sc = score, id = runId;
     if (!name) return;
+    if (isBadName(nameInput.value)) { nameInput.setCustomValidity("That name isn't allowed. Please pick another."); nameInput.reportValidity(); return; }
     saveBtn.disabled = true;
     try { localStorage.setItem("snake-name", name); } catch (e2) {}
     const res = await postScore(name, sc, curMode);
@@ -548,7 +585,7 @@
         const box = document.createElement("div"); box.className = "lbBox";
         const h4 = document.createElement("h4"); h4.textContent = cap(sp) + (res.global ? "" : " (this device)"); box.appendChild(h4);
         const ol = document.createElement("ol");
-        res.rows.slice(0, 5).forEach((r, i) => {
+        res.rows.filter(r => !isBadName(r.name)).slice(0, 5).forEach((r, i) => {
           const li = document.createElement("li");
           for (const [cls, txt] of [["rk", i + 1], ["nm", r.name], ["sc", r.score]]) {
             const sp2 = document.createElement("span"); sp2.className = cls; sp2.textContent = txt; li.appendChild(sp2);
