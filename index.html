@@ -4,8 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Snake</title>
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3934043277784873"
-     crossorigin="anonymous"></script>
 <style>
   :root {
     --bar: #4a752c; --page: #578a34; --a: #aad751; --b: #a2d149;
@@ -20,11 +18,7 @@
     font-family: "Google Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
   }
-  .layout { display: flex; align-items: center; justify-content: center; gap: 20px; }
-  .adside { display: none; width: 160px; height: 600px; flex: none; }
-  .adside ins { display: block; width: 160px; height: 600px; }
-  @media (min-width: 1100px) and (min-height: 640px) { .adside { display: block; } }
-  .game { width: min(96vw, 680px, calc((100vh - 24px) * 17 / 16.6)); }
+  .game { width: min(96vw, 680px, calc((100vh - 24px) * var(--ar, 1.02))); }
   .bar {
     background: var(--bar); color: #fff; height: 56px; padding: 0 18px;
     display: flex; align-items: center; justify-content: center; gap: 36px;
@@ -32,6 +26,11 @@
   }
   .stat { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
   .stat svg { width: 30px; height: 30px; }
+  .stat span { display: inline-block; }
+  .stat span.pop { animation: pop .28s ease; }
+  @keyframes pop { 50% { transform: scale(1.35); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.96); } }
+  .overlay.show h2, .overlay.show p { animation: rise .35s ease both; }
   .stage { position: relative; line-height: 0; }
   canvas { width: 100%; display: block; border-radius: 0 0 8px 8px; touch-action: none; outline: none; }
   .overlay {
@@ -56,6 +55,13 @@
   .overlay [hidden] { display: none !important; }
   #ovTitle { margin-top: auto; }
   #ovBtn { margin-bottom: auto; }
+  #settings { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; font-size: 13px; }
+  #settings label { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #settings select, #settings input {
+    font: inherit; font-size: 15px; padding: 6px 12px; border: 0; border-radius: 16px;
+    color: #1f2b1a; background: #fff; text-align: center;
+  }
+  #settings input { width: 70px; }
   #nameForm { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   #nameInput {
     font: inherit; font-size: 16px; width: 180px; padding: 10px 16px; border: 0; border-radius: 24px;
@@ -75,11 +81,6 @@
 </style>
 </head>
 <body>
-<div class="layout">
-<aside class="adside" aria-label="Advertisement">
-  <ins class="adsbygoogle" style="display:inline-block;width:160px;height:600px"
-       data-ad-client="ca-pub-3934043277784873" data-ad-slot="LEFT_AD_SLOT_ID"></ins>
-</aside>
 <div class="game">
   <div class="bar">
     <div class="stat" title="Score">
@@ -96,6 +97,11 @@
     <div class="overlay show" id="overlay">
       <h2 id="ovTitle">Snake</h2>
       <p id="ovSub">Press an arrow key, swipe, or tap to start</p>
+      <div id="settings">
+        <label>Speed <select id="setSpeed"><option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option></select></label>
+        <label>Map <select id="setMap"><option value="small">Small</option><option value="standard">Standard</option><option value="large">Large</option><option value="infinite">Infinite</option></select></label>
+        <label>Apples <input id="setApples" type="number" min="1" value="1"></label>
+      </div>
       <form id="nameForm" hidden autocomplete="off">
         <input id="nameInput" maxlength="12" placeholder="Your name" aria-label="Your name" required>
         <button id="saveBtn" type="submit">Save score</button>
@@ -108,21 +114,24 @@
     </div>
   </div>
 </div>
-<aside class="adside" aria-label="Advertisement">
-  <ins class="adsbygoogle" style="display:inline-block;width:160px;height:600px"
-       data-ad-client="ca-pub-3934043277784873" data-ad-slot="RIGHT_AD_SLOT_ID"></ins>
-</aside>
-</div>
 
 <script>
 (() => {
   "use strict";
-  const COLS = 17, ROWS = 15, CELL = 40;           // logical units
-  const LW = COLS * CELL, LH = ROWS * CELL;
-  const START_DELAY = 180, MIN_DELAY = 110, SPEEDUP = 2.5;   // ms per move (slower than before)
+  let COLS = 17, ROWS = 15, LW, LH; const CELL = 40;           // logical units
+  
 
   // Deployed leaderboard Worker URL (no trailing slash; the game adds /scores itself)
   const API_URL = "https://snake.bleepbloop-ai.workers.dev";
+
+  const SPEEDS = { slow: 179.55, normal: 1000 / 7.41, fast: 89.1 };     // ms per square (5.57 / 7.41 / 11.22 squares per second)
+  const MAPS = { small: [10, 9], standard: [17, 15], large: [24, 21], infinite: [17, 15] };  // [columns, rows]
+  let cfg = { speed: "normal", map: "standard", apples: 1 };
+  try { Object.assign(cfg, JSON.parse(localStorage.getItem("snake-cfg"))); } catch (e) {}
+  if (!SPEEDS[cfg.speed]) cfg.speed = "normal";
+  if (!MAPS[cfg.map]) cfg.map = "standard";
+  let INF = false, curMode = "standard-normal";    // curMode = leaderboard for the run being played
+  const modeName = () => curMode.split("-").map(w => w[0].toUpperCase() + w.slice(1)).join(" · ");
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
@@ -131,6 +140,7 @@
   const ovTitle = $("ovTitle"), ovSub = $("ovSub"), ovBtn = $("ovBtn");
   const nameForm = $("nameForm"), nameInput = $("nameInput"), saveBtn = $("saveBtn");
   const boardWrap = $("boardWrap"), boardNote = $("boardNote"), boardEl = $("board");
+  const settingsEl = $("settings"), setSpeed = $("setSpeed"), setMap = $("setMap"), setApples = $("setApples");
 
   const DIRS = { up: {x:0,y:-1}, down: {x:0,y:1}, left: {x:-1,y:0}, right: {x:1,y:0} };
   const KEYMAP = { ArrowUp:"up", ArrowDown:"down", ArrowLeft:"left", ArrowRight:"right",
@@ -140,46 +150,66 @@
   try { best = parseInt(localStorage.getItem("snake-best"), 10) || 0; } catch (e) {}
   bestEl.textContent = best;
 
-  let snake, prev, dir, queue, food, foodBorn, score, delay, state, acc, last, deathAt, overTimer, grew;
+  let snake, prev, dir, queue, food, foodBorn, score, delay, state, acc, last, deathAt, overTimer, grew, foods = [], ang = 0, shake = 0, lastFrame = 0, particles = [];
   // state: ready | running | paused | over | won
 
   let runId = 0;
 
+  /* ---------- polish: sound + particles ---------- */
+  let actx = null, muted = false;
+  function beep(f1, f2, dur, type = "sine", vol = .07) {
+    if (muted) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+      o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + dur);
+    } catch (e) {}
+  }
+  function burst(x, y) {
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * 6.283, v = 70 + Math.random() * 150;
+      particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1 });
+    }
+  }
+
   /* ---------- leaderboard (global via Worker, local fallback) ---------- */
   const LOCAL_KEY = "snake-board";
-  const getLocal = () => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY)) || []; } catch (e) { return []; } };
+  const getLocal = m => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY + ":" + m)) || []; } catch (e) { return []; } };
 
-  async function loadBoard() {
+  async function loadBoard(mode) {
     if (API_URL) {
       try {
-        const r = await fetch(API_URL + "/scores");
+        const r = await fetch(API_URL + "/scores?mode=" + mode);
         if (r.ok) return { rows: await r.json(), global: true };
       } catch (e) {}
     }
-    return { rows: getLocal(), global: false };
+    return { rows: getLocal(mode), global: false };
   }
 
-  async function postScore(name, sc) {
+  async function postScore(name, sc, mode) {
     if (API_URL) {
       try {
         const r = await fetch(API_URL + "/scores", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, score: sc })
+          body: JSON.stringify({ name, score: sc, mode })
         });
         if (r.ok) return { rows: await r.json(), global: true };
       } catch (e) {}
     }
-    const rows = getLocal();
+    const rows = getLocal(mode);
     rows.push({ name, score: sc, t: Date.now() });
     rows.sort((a, b) => b.score - a.score || a.t - b.t);
     rows.length = Math.min(rows.length, 10);
-    try { localStorage.setItem(LOCAL_KEY, JSON.stringify(rows)); } catch (e) {}
+    try { localStorage.setItem(LOCAL_KEY + ":" + mode, JSON.stringify(rows)); } catch (e) {}
     return { rows, global: false };
   }
 
   function renderBoard(res, me) {
     boardWrap.hidden = false;
-    boardNote.textContent = res.global ? "Global top 10"
+    boardNote.textContent = res.global ? "Global top 10 · " + modeName()
       : API_URL ? "Can't reach the global board. Showing scores on this device."
       : "Global board not connected. Showing scores on this device.";
     boardEl.textContent = "";
@@ -205,7 +235,7 @@
       try { nameInput.value = localStorage.getItem("snake-name") || ""; } catch (e) {}
       if (window.matchMedia("(pointer: fine)").matches) nameInput.focus();
     }
-    const res = await loadBoard();
+    const res = await loadBoard(curMode);
     if (id === runId && !boardEl.children.length) renderBoard(res);
   }
 
@@ -215,7 +245,7 @@
     if (!name) return;
     saveBtn.disabled = true;
     try { localStorage.setItem("snake-name", name); } catch (e2) {}
-    const res = await postScore(name, sc);
+    const res = await postScore(name, sc, curMode);
     if (id !== runId) return;
     nameForm.hidden = true;
     renderBoard(res, { name, score: sc });
@@ -232,30 +262,45 @@
   }
   window.addEventListener("resize", resize);
 
+  function applyConfig() {
+    [COLS, ROWS] = MAPS[cfg.map]; INF = cfg.map === "infinite"; curMode = cfg.map + "-" + cfg.speed; LW = COLS * CELL; LH = ROWS * CELL;
+    cfg.apples = Math.max(1, Math.min(cfg.apples | 0 || 1, COLS * ROWS - 3));
+    document.documentElement.style.setProperty("--ar", COLS / (ROWS + 1.6));
+    setApples.max = COLS * ROWS - 3; setApples.value = cfg.apples; setSpeed.value = cfg.speed; setMap.value = cfg.map;
+    resize();
+  }
+  for (const el of [setSpeed, setMap, setApples]) el.addEventListener("change", () => {
+    cfg.speed = setSpeed.value; cfg.map = setMap.value; cfg.apples = parseInt(setApples.value, 10) || 1;
+    try { localStorage.setItem("snake-cfg", JSON.stringify(cfg)); } catch (e) {}
+    el.blur(); if (state === "ready") reset();
+  });
+
   /* ---------- game logic ---------- */
   function reset() {
-    clearTimeout(overTimer); runId++;
+    clearTimeout(overTimer); runId++; applyConfig();
     const cy = Math.floor(ROWS / 2);
     snake = [{x:5,y:cy},{x:4,y:cy},{x:3,y:cy}];
     prev = snake.map(s => ({...s}));
-    dir = DIRS.right; queue = []; score = 0; delay = START_DELAY; acc = 0; grew = false;
+    dir = DIRS.right; ang = 0; shake = 0; particles = []; queue = []; score = 0; delay = SPEEDS[cfg.speed]; acc = 0; grew = false;
     state = "ready"; scoreEl.textContent = 0;
-    placeFood();
+    foods = [];
+    for (let i = 0; i < cfg.apples; i++) placeFood();
     showOverlay("Snake", "Press an arrow key, swipe, or tap to start", "Play");
   }
 
   function placeFood() {
-    const taken = new Set(snake.map(s => s.x + "," + s.y));
+    const taken = new Set(snake.concat(foods).map(c => c.x + "," + c.y));
     const free = [];
-    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++)
+    const x0 = INF ? snake[0].x - 8 : 0, y0 = INF ? snake[0].y - 7 : 0;   // infinite: spawn in the view around the head
+    for (let y = y0; y < y0 + ROWS; y++) for (let x = x0; x < x0 + COLS; x++)
       if (!taken.has(x + "," + y)) free.push({x, y});
-    food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
-    foodBorn = performance.now();
+    if (free.length) { const c = free[Math.floor(Math.random() * free.length)]; foods.push({ x: c.x, y: c.y, born: performance.now() }); }
   }
 
   function showOverlay(t, s, b) {
     ovTitle.textContent = t; ovSub.textContent = s; ovBtn.textContent = b;
     nameForm.hidden = true; boardWrap.hidden = true;
+    settingsEl.hidden = !(b === "Play" || b === "Play again");
     overlay.classList.add("show");
   }
   const hideOverlay = () => overlay.classList.remove("show");
@@ -277,8 +322,8 @@
   function tick() {
     if (queue.length) dir = queue.shift();
     const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
-    const hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS;
-    const eating = !hitWall && food && head.x === food.x && head.y === food.y;
+    const hitWall = !INF && (head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS);
+    const fi = hitWall ? -1 : foods.findIndex(f => f.x === head.x && f.y === head.y), eating = fi >= 0;
     const body = eating ? snake : snake.slice(0, -1);
     if (hitWall || body.some(s => s.x === head.x && s.y === head.y)) { return finish("over"); }
 
@@ -287,17 +332,21 @@
     if (eating) {
       prev.push({...prev[prev.length - 1]});            // new tail grows out of the old tail
       score++; scoreEl.textContent = score;
-      delay = Math.max(MIN_DELAY, delay - SPEEDUP);
+      scoreEl.classList.remove("pop"); void scoreEl.offsetWidth; scoreEl.classList.add("pop");
+      burst((foods[fi].x + .5) * CELL, (foods[fi].y + .55) * CELL); beep(520, 920, .12);
       if (score > best) {
         best = score; bestEl.textContent = best;
         try { localStorage.setItem("snake-best", String(best)); } catch (e) {}
       }
-      placeFood();
-      if (!food) finish("won");
+      foods.splice(fi, 1); placeFood();
+      if (!foods.length) finish("won");
     } else snake.pop();
+    if (INF) for (let i = foods.length - 1; i >= 0; i--)      // apples left far behind respawn near the snake
+      if (Math.abs(foods[i].x - head.x) > 10 || Math.abs(foods[i].y - head.y) > 9) { foods.splice(i, 1); placeFood(); }
   }
 
   function finish(result) {
+    if (result === "over") { shake = 1; beep(200, 50, .4, "sawtooth"); } else beep(600, 1200, .4);
     state = result; deathAt = performance.now(); acc = delay;   // freeze at the last full position
     prev = snake.map(s => ({...s}));
     overTimer = setTimeout(showGameOver, result === "won" ? 300 : 700);
@@ -308,19 +357,26 @@
   const ease = t => t * t * (3 - 2 * t);
 
   function draw(now) {
-    ctx.setTransform(canvas.width / LW, 0, 0, canvas.width / LW, 0, 0);
+    const k = canvas.width / LW, sh = shake * 8 * k;
+    ctx.setTransform(k, 0, 0, k, (Math.random() - .5) * sh, (Math.random() - .5) * sh);
 
     // checkerboard
-    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-      ctx.fillStyle = (x + y) % 2 ? "#a2d149" : "#aad751";
+    let gx = 0, gy = 0;
+    if (INF) {
+      const t0 = state === "running" || state === "paused" ? Math.min(1, acc / delay) : 1;
+      const cx = (lerp(prev[0].x, snake[0].x, t0) + .5) * CELL - LW / 2, cy = (lerp(prev[0].y, snake[0].y, t0) + .5) * CELL - LH / 2;
+      ctx.translate(-cx, -cy); gx = Math.floor(cx / CELL); gy = Math.floor(cy / CELL);
+    }
+    for (let y = gy; y <= gy + ROWS; y++) for (let x = gx; x <= gx + COLS; x++) {
+      ctx.fillStyle = (x + y) & 1 ? "#a2d149" : "#aad751";
       ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
     }
 
     // food (pops in with a little overshoot)
-    if (food) {
-      const k = Math.max(0, Math.min(1, (now - foodBorn) / 260));
+    for (const food of foods) {
+      const k = Math.max(0, Math.min(1, (now - food.born) / 260));
       const s = Math.max(0.01, k < 1 ? 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2) : 1);
-      drawApple((food.x + .5) * CELL, (food.y + .55) * CELL, s);
+      drawApple((food.x + .5) * CELL, (food.y + .55) * CELL + Math.sin(now / 280) * 1.5, s * (1 + .035 * Math.sin(now / 220)));
     }
 
     // snake positions, interpolated between ticks
@@ -343,30 +399,35 @@
     ctx.globalAlpha = alpha;
 
     ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.strokeStyle = "#4e7cf6"; ctx.lineWidth = CELL * 0.74;
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
+    const path = new Path2D();
+    path.moveTo(pts[0].x, pts[0].y);
     const R = CELL * 0.5, m = pts.length;
     for (let i = 1; i < m - 1; i++) {
       const d1 = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
       const d2 = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y);
       const r = Math.min(R, d1 * (i === 1 ? 1 : 0.5), d2 * (i === m - 2 ? 1 : 0.5));
-      ctx.arcTo(pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y, r);
+      path.arcTo(pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y, r);
     }
-    ctx.lineTo(pts[m - 1].x, pts[m - 1].y);
-    ctx.stroke();
+    path.lineTo(pts[m - 1].x, pts[m - 1].y);
+    ctx.save(); ctx.translate(0, 5); ctx.strokeStyle = "rgba(0,0,0,.16)"; ctx.lineWidth = CELL * 0.74; ctx.stroke(path); ctx.restore();
+    ctx.strokeStyle = "#4e7cf6"; ctx.lineWidth = CELL * 0.74; ctx.stroke(path);
+    ctx.save(); ctx.translate(0, -3); ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = CELL * 0.3; ctx.stroke(path); ctx.restore();
 
     // head
-    const h = H, px = -dir.y, py = dir.x;
+    const h = H, fx = Math.cos(ang), fy = Math.sin(ang), px = -fy, py = fx;
     ctx.fillStyle = "#4e7cf6";
-    ctx.beginPath(); ctx.arc(h.x, h.y, CELL * 0.42, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,.16)"; ctx.beginPath(); ctx.arc(h.x, h.y + 5, CELL * 0.42, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#4e7cf6"; ctx.beginPath(); ctx.arc(h.x, h.y, CELL * 0.42, 0, Math.PI * 2); ctx.fill();
     for (const side of [-1, 1]) {
-      const ex = h.x + dir.x * CELL * 0.1 + px * side * CELL * 0.2;
-      const ey = h.y + dir.y * CELL * 0.1 + py * side * CELL * 0.2;
+      const ex = h.x + fx * CELL * 0.1 + px * side * CELL * 0.2;
+      const ey = h.y + fy * CELL * 0.1 + py * side * CELL * 0.2;
       ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, CELL * 0.14, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "#1b2a5c"; ctx.beginPath();
-      ctx.arc(ex + dir.x * CELL * 0.05, ey + dir.y * CELL * 0.05, CELL * 0.075, 0, Math.PI * 2); ctx.fill();
+      ctx.arc(ex + fx * CELL * 0.05, ey + fy * CELL * 0.05, CELL * 0.075, 0, Math.PI * 2); ctx.fill();
     }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#e7471d";
+    for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life); ctx.beginPath(); ctx.arc(p.x, p.y, 4 * p.life + 1, 0, 6.283); ctx.fill(); }
     ctx.globalAlpha = 1;
   }
 
@@ -392,10 +453,13 @@
 
   /* ---------- main loop ---------- */
   function loop(now) {
+    const dt = Math.min((now - (lastFrame || now)) / 1000, .05); lastFrame = now;
+    let da = Math.atan2(dir.y, dir.x) - ang; da = Math.atan2(Math.sin(da), Math.cos(da)); ang += da * Math.min(1, dt * 16);
+    shake = Math.max(0, shake - dt * 2.5);
+    for (const q of particles) { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= .93; q.vy *= .93; q.life -= dt * 2.2; }
+    particles = particles.filter(q => q.life > 0);
     if (state === "running") {
-      const boost = queue.length ? 4 : 1;     // a waiting turn fast-forwards to the next cell
-      acc += Math.min(now - last, 100) * boost;
-      if (boost > 1) acc = Math.min(acc, delay);
+      acc += Math.min(now - last, 100);
       last = now;
       while (acc >= delay && state === "running") { acc -= delay; tick(); }
     }
@@ -406,7 +470,7 @@
   /* ---------- input ---------- */
   window.addEventListener("keydown", e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.target instanceof HTMLInputElement) return;     // typing a name
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;     // typing a name
     const name = KEYMAP[e.key];
     if (name) {
       e.preventDefault();
@@ -414,6 +478,8 @@
       if (state === "running") steer(name);
     } else if (e.code === "Space") {
       e.preventDefault(); if (!e.repeat) startOrToggle();
+    } else if (e.key === "m" || e.key === "M") {
+      muted = !muted;
     } else if (e.key === "r" || e.key === "R") {
       reset();
     } else if (e.key === "Enter" && state !== "running") {
@@ -445,12 +511,6 @@
   document.addEventListener("visibilitychange", () => { if (document.hidden) autoPause(); });
   window.addEventListener("blur", autoPause);
 
-  // Load ads only where the side panels are actually shown (they're hidden on small screens)
-  document.querySelectorAll(".adside").forEach(side => {
-    if (side.offsetWidth > 0) { try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) {} }
-  });
-
-  resize();
   reset();
   requestAnimationFrame(t => { last = t; loop(t); });
 })();
