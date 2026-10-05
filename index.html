@@ -215,7 +215,7 @@
   let snake, prev, dir, queue, food, foodBorn, score, delay, state, acc, last, deathAt, overTimer, grew, waiting = false, foods = [], ang = 0, shake = 0, lastFrame = 0, particles = [], wallSeed = 0;
   // state: ready | running | paused | over | won
 
-  let runId = 0;
+  let runId = 0, pendingSave = null;
 
   /* ---------- walls (infinite mode only): procedural, so they appear as you explore ---------- */
   const hash = (x, y, s) => {
@@ -373,7 +373,7 @@ function isBadName(raw) {
     if (sc > 0 && saved) {                                   // name already known: save automatically
       nameForm.hidden = true; boardNote.textContent = "Saving score…";
       showSaved(saved);
-      const res = await postScore(saved, sc, curMode);
+      const res = await (pendingSave && pendingSave.score === sc ? pendingSave.p : postScore(saved, sc, curMode));
       if (id === runId) renderBoard(res, { name: saved, score: sc });
       return;
     }
@@ -445,7 +445,7 @@ function isBadName(raw) {
 
   /* ---------- game logic ---------- */
   function reset() {
-    clearTimeout(overTimer); runId++; applyConfig();
+    clearTimeout(overTimer); runId++; pendingSave = null; applyConfig();
     wallSeed = (Math.random() * 2147483647) | 0;
     const cy = Math.floor(ROWS / 2);
     snake = [{x:5,y:cy},{x:4,y:cy},{x:3,y:cy}];
@@ -520,6 +520,9 @@ function isBadName(raw) {
     if (result === "over") { shake = PERF ? 0 : 1; beep(200, 50, .4, "sawtooth"); } else beep(600, 1200, .4);
     state = result; deathAt = performance.now(); acc = delay;   // freeze at the last full position
     prev = snake.map(s => ({...s}));
+    pendingSave = null;                                         // save right away if we already know the player's name
+    let nm = ""; try { nm = localStorage.getItem("snake-name") || ""; } catch (e) {}
+    if (nm && !isBadName(nm) && score > 0) pendingSave = { score, p: postScore(nm, score, curMode) };
     overTimer = setTimeout(showGameOver, result === "won" ? 300 : 700);
   }
 
