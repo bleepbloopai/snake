@@ -99,6 +99,9 @@
   #board .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   #board .sc { font-variant-numeric: tabular-nums; }
   #board .me { background: rgba(255,255,255,.24); font-weight: 700; }
+  /* Performance Mode: drop CSS animations/transitions */
+  .perf .overlay { transition: none; }
+  .perf .overlay.show h2, .perf .overlay.show p, .perf .stat span.pop { animation: none; }
 </style>
 </head>
 <body>
@@ -129,6 +132,7 @@
         <label>Speed <select id="setSpeed"><option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option></select></label>
         <label>Map <select id="setMap"><option value="small">Small</option><option value="standard">Standard</option><option value="large">Large</option><option value="infinite">Infinite</option></select></label>
         <label>Apples <input id="setApples" type="number" min="1" value="1"></label>
+        <label>Performance <select id="setPerf"><option value="off">Off</option><option value="on">On</option></select></label>
       </div>
       <form id="nameForm" hidden autocomplete="off">
         <input id="nameInput" maxlength="12" placeholder="Your name" aria-label="Your name" required>
@@ -155,11 +159,12 @@
 
   const SPEEDS = { slow: 179.55, normal: 1000 / 7.41, fast: 89.1 };     // ms per square (5.57 / 7.41 / 11.22 squares per second)
   const MAPS = { small: [10, 9], standard: [17, 15], large: [24, 21], infinite: [17, 15] };  // [columns, rows]
-  let cfg = { speed: "normal", map: "standard", apples: 1 };
+  let cfg = { speed: "normal", map: "standard", apples: 1, perf: "off" };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem("snake-cfg"))); } catch (e) {}
   if (!SPEEDS[cfg.speed]) cfg.speed = "normal";
   if (!MAPS[cfg.map]) cfg.map = "standard";
-  let INF = false, curMode = "standard-normal";    // curMode = leaderboard for the run being played
+  if (cfg.perf !== "on") cfg.perf = "off";
+  let INF = false, PERF = false, curMode = "standard-normal";    // curMode = leaderboard for the run being played
   const modeName = () => curMode.split("-").map(w => w[0].toUpperCase() + w.slice(1)).join(" · ");
 
   const canvas = document.getElementById("game");
@@ -170,7 +175,7 @@
   const nameForm = $("nameForm"), nameInput = $("nameInput"), saveBtn = $("saveBtn");
   const boardWrap = $("boardWrap"), boardNote = $("boardNote"), boardEl = $("board");
   const savedNote = $("savedNote"), savedText = $("savedText"), changeName = $("changeName");
-  const settingsEl = $("settings"), setSpeed = $("setSpeed"), setMap = $("setMap"), setApples = $("setApples");
+  const settingsEl = $("settings"), setSpeed = $("setSpeed"), setMap = $("setMap"), setApples = $("setApples"), setPerf = $("setPerf");
 
   const DIRS = { up: {x:0,y:-1}, down: {x:0,y:1}, left: {x:-1,y:0}, right: {x:1,y:0} };
   const KEYMAP = { ArrowUp:"up", ArrowDown:"down", ArrowLeft:"left", ArrowRight:"right",
@@ -199,6 +204,7 @@
     } catch (e) {}
   }
   function burst(x, y) {
+    if (PERF) return;
     for (let i = 0; i < 14; i++) {
       const a = Math.random() * 6.283, v = 70 + Math.random() * 150;
       particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1 });
@@ -339,9 +345,9 @@ function isBadName(raw) {
     ovBtn.focus();
   });
 
-  /* ---------- sizing (crisp on any screen) ---------- */
+  /* ---------- sizing (crisp on any screen; 1x in Performance Mode) ---------- */
   function resize() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = PERF ? 1 : (window.devicePixelRatio || 1);
     const w = Math.round(canvas.clientWidth * dpr);
     canvas.width = w; canvas.height = Math.round(w * LH / LW);
     canvas.style.height = "auto";
@@ -354,10 +360,12 @@ function isBadName(raw) {
     cfg.apples = Math.max(1, Math.min(cfg.apples | 0 || 1, COLS * ROWS - 3));
     document.documentElement.style.setProperty("--ar", COLS / (ROWS + 1.6));
     setApples.max = COLS * ROWS - 3; setApples.value = cfg.apples; setSpeed.value = cfg.speed; setMap.value = cfg.map;
+    PERF = cfg.perf === "on"; document.body.classList.toggle("perf", PERF); setPerf.value = cfg.perf;
     resize();
   }
-  for (const el of [setSpeed, setMap, setApples]) el.addEventListener("change", () => {
-    cfg.speed = setSpeed.value; cfg.map = setMap.value; cfg.apples = parseInt(setApples.value, 10) || 1;
+  for (const el of [setSpeed, setMap, setApples, setPerf]) el.addEventListener("change", () => {
+    cfg.speed = setSpeed.value; cfg.map = setMap.value; cfg.apples = parseInt(setApples.value, 10) || 1; cfg.perf = setPerf.value;
+    PERF = cfg.perf === "on"; document.body.classList.toggle("perf", PERF); resize();
     try { localStorage.setItem("snake-cfg", JSON.stringify(cfg)); } catch (e) {}
     el.blur(); if (state === "ready") reset();
   });
@@ -435,7 +443,7 @@ function isBadName(raw) {
   }
 
   function finish(result) {
-    if (result === "over") { shake = 1; beep(200, 50, .4, "sawtooth"); } else beep(600, 1200, .4);
+    if (result === "over") { shake = PERF ? 0 : 1; beep(200, 50, .4, "sawtooth"); } else beep(600, 1200, .4);
     state = result; deathAt = performance.now(); acc = delay;   // freeze at the last full position
     prev = snake.map(s => ({...s}));
     overTimer = setTimeout(showGameOver, result === "won" ? 300 : 700);
@@ -446,7 +454,7 @@ function isBadName(raw) {
   const ease = t => t * t * (3 - 2 * t);
 
   function draw(now) {
-    const k = canvas.width / LW, sh = shake * 8 * k;
+    const k = canvas.width / LW, sh = PERF ? 0 : shake * 8 * k;
     ctx.setTransform(k, 0, 0, k, (Math.random() - .5) * sh, (Math.random() - .5) * sh);
 
     // checkerboard
@@ -461,11 +469,11 @@ function isBadName(raw) {
       ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
     }
 
-    // food (pops in with a little overshoot)
+    // food (pops in with a little overshoot, then sits still)
     for (const food of foods) {
       const k = Math.max(0, Math.min(1, (now - food.born) / 260));
       const s = Math.max(0.01, k < 1 ? 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2) : 1);
-      drawApple((food.x + .5) * CELL, (food.y + .55) * CELL + Math.sin(now / 280) * 1.5, s * (1 + .035 * Math.sin(now / 220)));
+      drawApple((food.x + .5) * CELL, (food.y + .55) * CELL, s);
     }
 
     // snake positions, interpolated between ticks
@@ -498,14 +506,13 @@ function isBadName(raw) {
       path.arcTo(pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y, r);
     }
     path.lineTo(pts[m - 1].x, pts[m - 1].y);
-    ctx.save(); ctx.translate(0, 5); ctx.strokeStyle = "rgba(0,0,0,.16)"; ctx.lineWidth = CELL * 0.74; ctx.stroke(path); ctx.restore();
+    if (!PERF) { ctx.save(); ctx.translate(0, 5); ctx.strokeStyle = "rgba(0,0,0,.16)"; ctx.lineWidth = CELL * 0.74; ctx.stroke(path); ctx.restore(); }
     ctx.strokeStyle = "#4e7cf6"; ctx.lineWidth = CELL * 0.74; ctx.stroke(path);
-    ctx.save(); ctx.translate(0, -3); ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = CELL * 0.3; ctx.stroke(path); ctx.restore();
+    if (!PERF) { ctx.save(); ctx.translate(0, -3); ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = CELL * 0.3; ctx.stroke(path); ctx.restore(); }
 
     // head
     const h = H, fx = Math.cos(ang), fy = Math.sin(ang), px = -fy, py = fx;
-    ctx.fillStyle = "#4e7cf6";
-    ctx.fillStyle = "rgba(0,0,0,.16)"; ctx.beginPath(); ctx.arc(h.x, h.y + 5, CELL * 0.42, 0, Math.PI * 2); ctx.fill();
+    if (!PERF) { ctx.fillStyle = "rgba(0,0,0,.16)"; ctx.beginPath(); ctx.arc(h.x, h.y + 5, CELL * 0.42, 0, Math.PI * 2); ctx.fill(); }
     ctx.fillStyle = "#4e7cf6"; ctx.beginPath(); ctx.arc(h.x, h.y, CELL * 0.42, 0, Math.PI * 2); ctx.fill();
     for (const side of [-1, 1]) {
       const ex = h.x + fx * CELL * 0.1 + px * side * CELL * 0.2;
@@ -531,16 +538,20 @@ function isBadName(raw) {
 
   function drawApple(cx, cy, s) {
     const r = CELL * 0.36 * s;
-    ctx.fillStyle = "rgba(0,0,0,.12)";
-    ctx.beginPath(); ctx.ellipse(cx, cy + r * 0.95, r * 0.8, r * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+    if (!PERF) {
+      ctx.fillStyle = "rgba(0,0,0,.12)";
+      ctx.beginPath(); ctx.ellipse(cx, cy + r * 0.95, r * 0.8, r * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.fillStyle = "#e7471d";
     ctx.beginPath();
     ctx.arc(cx - r * 0.38, cy, r * 0.72, 0, Math.PI * 2);
     ctx.arc(cx + r * 0.38, cy, r * 0.72, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath(); ctx.arc(cx, cy + r * 0.1, r * 0.85, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,.35)";
-    ctx.beginPath(); ctx.ellipse(cx - r * 0.45, cy - r * 0.2, r * 0.18, r * 0.3, -0.5, 0, Math.PI * 2); ctx.fill();
+    if (!PERF) {
+      ctx.fillStyle = "rgba(255,255,255,.35)";
+      ctx.beginPath(); ctx.ellipse(cx - r * 0.45, cy - r * 0.2, r * 0.18, r * 0.3, -0.5, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.fillStyle = "#7bc043";                      // leaf
     ctx.beginPath();
     ctx.moveTo(cx, cy - r * 0.7);
