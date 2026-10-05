@@ -65,14 +65,22 @@
     color: #1f2b1a; background: #fff; text-align: center;
   }
   #settings input { width: 70px; }
-  #lbBtn { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 10px; z-index: 5; font: inherit; font-size: 14px; font-weight: 700;
+  #lbBtn, #setBtn { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 10px; z-index: 5; font: inherit; font-size: 14px; font-weight: 700;
     color: #fff; background: var(--bar); border: 0; border-radius: 20px; padding: 8px 14px; cursor: pointer; box-shadow: 0 2px 0 rgba(0,0,0,.2); }
-  #lbModal { position: fixed; inset: 0; z-index: 10; background: rgba(20,40,10,.6); display: flex; align-items: center; justify-content: center; padding: 12px; }
-  #lbModal[hidden] { display: none; }
-  #lbCard { background: var(--bar); color: #fff; border-radius: 12px; width: min(780px, 100%); max-height: 100%; overflow-y: auto; padding: 16px 18px; }
-  #lbHead { display: flex; justify-content: space-between; align-items: center; }
-  #lbHead h2 { margin: 0; font-size: 22px; }
-  #lbClose { font: inherit; font-size: 22px; color: #fff; background: none; border: 0; cursor: pointer; }
+  #setBtn { left: auto; right: 10px; }
+  #lbModal, #setModal { position: fixed; inset: 0; z-index: 10; background: rgba(20,40,10,.6); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  #lbModal[hidden], #setModal[hidden] { display: none; }
+  #lbCard, #setCard { background: var(--bar); color: #fff; border-radius: 12px; width: min(780px, 100%); max-height: 100%; overflow-y: auto; padding: 16px 18px; }
+  #setCard { width: min(420px, 100%); }
+  #lbHead, #setHead { display: flex; justify-content: space-between; align-items: center; }
+  #lbHead h2, #setHead h2 { margin: 0; font-size: 22px; }
+  #lbClose, #setClose { font: inherit; font-size: 22px; color: #fff; background: none; border: 0; cursor: pointer; }
+  #setGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-top: 14px; }
+  #setGrid label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+  #setGrid select { font: inherit; font-size: 15px; padding: 8px 12px; border: 0; border-radius: 16px; color: #1f2b1a; background: #fff; }
+  #setGrid input[type=color] { width: 100%; height: 38px; border: 0; border-radius: 16px; padding: 3px 6px; background: #fff; cursor: pointer; }
+  #setReset { font: inherit; font-weight: 700; font-size: 14px; color: #fff; background: #4e7cf6; border: 0; border-radius: 20px; padding: 8px 16px; margin-top: 16px; cursor: pointer; box-shadow: 0 2px 0 #2f55c4; }
+  #setNote { margin: 12px 0 0; font-size: 12px; opacity: .85; line-height: 1.35; }
   .lbMap h3 { margin: 14px 0 6px; font-size: 16px; }
   .lbRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
   .lbBox { background: rgba(255,255,255,.1); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
@@ -106,10 +114,24 @@
 </head>
 <body>
 <button id="lbBtn" type="button">🏆 Leaderboards</button>
+<button id="setBtn" type="button">⚙️ Settings</button>
 <div id="lbModal" hidden>
   <div id="lbCard" role="dialog" aria-label="Leaderboards">
     <div id="lbHead"><h2>Leaderboards · Top 5</h2><button id="lbClose" type="button" aria-label="Close">✕</button></div>
     <div id="lbBody"></div>
+  </div>
+</div>
+<div id="setModal" hidden>
+  <div id="setCard" role="dialog" aria-label="Settings">
+    <div id="setHead"><h2>Settings</h2><button id="setClose" type="button" aria-label="Close">✕</button></div>
+    <div id="setGrid">
+      <label>Snake color <input id="setSnake" type="color" value="#4e7cf6"></label>
+      <label>Map color <input id="setMapColor" type="color" value="#aad751"></label>
+      <label>Performance mode <select id="setPerf"><option value="off">Off</option><option value="on">On</option></select></label>
+      <label>Sound <select id="setSound"><option value="on">On</option><option value="off">Off</option></select></label>
+    </div>
+    <button id="setReset" type="button">Reset colors</button>
+    <p id="setNote">Performance mode removes shadows, particles, screen shake and animations, and draws at 1x resolution.</p>
   </div>
 </div>
 <div class="game">
@@ -132,7 +154,6 @@
         <label>Speed <select id="setSpeed"><option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option></select></label>
         <label>Map <select id="setMap"><option value="small">Small</option><option value="standard">Standard</option><option value="large">Large</option><option value="infinite">Infinite</option></select></label>
         <label>Apples <input id="setApples" type="number" min="1" value="1"></label>
-        <label>Performance <select id="setPerf"><option value="off">Off</option><option value="on">On</option></select></label>
       </div>
       <form id="nameForm" hidden autocomplete="off">
         <input id="nameInput" maxlength="12" placeholder="Your name" aria-label="Your name" required>
@@ -159,12 +180,17 @@
 
   const SPEEDS = { slow: 179.55, normal: 1000 / 7.41, fast: 89.1 };     // ms per square (5.57 / 7.41 / 11.22 squares per second)
   const MAPS = { small: [10, 9], standard: [17, 15], large: [24, 21], infinite: [17, 15] };  // [columns, rows]
-  let cfg = { speed: "normal", map: "standard", apples: 1, perf: "off" };
+  const DEF_SNAKE = "#4e7cf6", DEF_MAP = "#aad751";
+  let cfg = { speed: "normal", map: "standard", apples: 1, perf: "off", sound: "on", snakeColor: DEF_SNAKE, mapColor: DEF_MAP };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem("snake-cfg"))); } catch (e) {}
   if (!SPEEDS[cfg.speed]) cfg.speed = "normal";
   if (!MAPS[cfg.map]) cfg.map = "standard";
   if (cfg.perf !== "on") cfg.perf = "off";
-  let INF = false, PERF = false, curMode = "standard-normal";    // curMode = leaderboard for the run being played
+  if (cfg.sound !== "off") cfg.sound = "on";
+  if (!/^#[0-9a-f]{6}$/i.test(cfg.snakeColor)) cfg.snakeColor = DEF_SNAKE;
+  if (!/^#[0-9a-f]{6}$/i.test(cfg.mapColor)) cfg.mapColor = DEF_MAP;
+  const saveCfg = () => { try { localStorage.setItem("snake-cfg", JSON.stringify(cfg)); } catch (e) {} };
+  let INF = false, PERF = false, SNAKE = DEF_SNAKE, tileA = DEF_MAP, tileB = "#a2d149", curMode = "standard-normal";    // curMode = leaderboard for the run being played
   const modeName = () => curMode.split("-").map(w => w[0].toUpperCase() + w.slice(1)).join(" · ");
 
   const canvas = document.getElementById("game");
@@ -175,7 +201,8 @@
   const nameForm = $("nameForm"), nameInput = $("nameInput"), saveBtn = $("saveBtn");
   const boardWrap = $("boardWrap"), boardNote = $("boardNote"), boardEl = $("board");
   const savedNote = $("savedNote"), savedText = $("savedText"), changeName = $("changeName");
-  const settingsEl = $("settings"), setSpeed = $("setSpeed"), setMap = $("setMap"), setApples = $("setApples"), setPerf = $("setPerf");
+  const settingsEl = $("settings"), setSpeed = $("setSpeed"), setMap = $("setMap"), setApples = $("setApples");
+  const setSnake = $("setSnake"), setMapColor = $("setMapColor"), setPerf = $("setPerf"), setSound = $("setSound");
 
   const DIRS = { up: {x:0,y:-1}, down: {x:0,y:1}, left: {x:-1,y:0}, right: {x:1,y:0} };
   const KEYMAP = { ArrowUp:"up", ArrowDown:"down", ArrowLeft:"left", ArrowRight:"right",
@@ -185,13 +212,43 @@
   try { best = parseInt(localStorage.getItem("snake-best"), 10) || 0; } catch (e) {}
   bestEl.textContent = best;
 
-  let snake, prev, dir, queue, food, foodBorn, score, delay, state, acc, last, deathAt, overTimer, grew, waiting = false, foods = [], ang = 0, shake = 0, lastFrame = 0, particles = [];
+  let snake, prev, dir, queue, food, foodBorn, score, delay, state, acc, last, deathAt, overTimer, grew, waiting = false, foods = [], ang = 0, shake = 0, lastFrame = 0, particles = [], wallSeed = 0;
   // state: ready | running | paused | over | won
 
   let runId = 0;
 
+  /* ---------- walls (infinite mode only): procedural, so they appear as you explore ---------- */
+  const hash = (x, y, s) => {
+    let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(s | 0, 1274126177);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  function isWall(x, y) {
+    if (!INF) return false;
+    if (x > -4 && x < 16 && Math.abs(y - Math.floor(ROWS / 2)) < 4) return false;      // safe zone around the start
+    const v = hash(x, y, wallSeed);
+    return v < 0.015 || (v < 0.5 && hash(x >> 1, y >> 1, wallSeed + 7) < 0.07);        // lone tiles + small clumps
+  }
+
+  /* ---------- theme (map color drives board + page + bar) ---------- */
+  function mixc(hex, f) {
+    const n = parseInt(hex.slice(1), 16);
+    return "#" + [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => Math.round(v * f).toString(16).padStart(2, "0")).join("");
+  }
+  function applyTheme() {
+    const def = cfg.mapColor.toLowerCase() === DEF_MAP, r = document.documentElement.style;
+    tileA = cfg.mapColor; tileB = def ? "#a2d149" : mixc(cfg.mapColor, .955);
+    r.setProperty("--page", def ? "#578a34" : mixc(cfg.mapColor, .62));
+    r.setProperty("--bar", def ? "#4a752c" : mixc(cfg.mapColor, .52));
+  }
+  function applyLook() {
+    PERF = cfg.perf === "on"; document.body.classList.toggle("perf", PERF);
+    SNAKE = cfg.snakeColor; applyTheme();
+    setSnake.value = cfg.snakeColor; setMapColor.value = cfg.mapColor; setPerf.value = cfg.perf; setSound.value = cfg.sound;
+  }
+
   /* ---------- polish: sound + particles ---------- */
-  let actx = null, muted = false;
+  let actx = null, muted = cfg.sound === "off";
   function beep(f1, f2, dur, type = "sine", vol = .07) {
     if (muted) return;
     try {
@@ -360,19 +417,36 @@ function isBadName(raw) {
     cfg.apples = Math.max(1, Math.min(cfg.apples | 0 || 1, COLS * ROWS - 3));
     document.documentElement.style.setProperty("--ar", COLS / (ROWS + 1.6));
     setApples.max = COLS * ROWS - 3; setApples.value = cfg.apples; setSpeed.value = cfg.speed; setMap.value = cfg.map;
-    PERF = cfg.perf === "on"; document.body.classList.toggle("perf", PERF); setPerf.value = cfg.perf;
+    applyLook();
     resize();
   }
-  for (const el of [setSpeed, setMap, setApples, setPerf]) el.addEventListener("change", () => {
-    cfg.speed = setSpeed.value; cfg.map = setMap.value; cfg.apples = parseInt(setApples.value, 10) || 1; cfg.perf = setPerf.value;
-    PERF = cfg.perf === "on"; document.body.classList.toggle("perf", PERF); resize();
-    try { localStorage.setItem("snake-cfg", JSON.stringify(cfg)); } catch (e) {}
+  for (const el of [setSpeed, setMap, setApples]) el.addEventListener("change", () => {
+    cfg.speed = setSpeed.value; cfg.map = setMap.value; cfg.apples = parseInt(setApples.value, 10) || 1;
+    saveCfg();
     el.blur(); if (state === "ready") reset();
   });
+
+  /* ---------- settings tab ---------- */
+  const setModal = $("setModal");
+  let setOpen = false;
+  function closeSettings() { setOpen = false; setModal.hidden = true; }
+  function openSettings() {
+    setOpen = true; if (state === "running") startOrToggle();     // pause the game
+    setModal.hidden = false;
+  }
+  $("setBtn").addEventListener("click", e => { e.currentTarget.blur(); openSettings(); });
+  $("setClose").addEventListener("click", closeSettings);
+  setModal.addEventListener("click", e => { if (e.target === setModal) closeSettings(); });
+  setSnake.addEventListener("input", () => { cfg.snakeColor = setSnake.value; applyLook(); saveCfg(); });
+  setMapColor.addEventListener("input", () => { cfg.mapColor = setMapColor.value; applyLook(); saveCfg(); });
+  setPerf.addEventListener("change", () => { cfg.perf = setPerf.value; applyLook(); resize(); saveCfg(); setPerf.blur(); });
+  setSound.addEventListener("change", () => { cfg.sound = setSound.value; muted = cfg.sound === "off"; saveCfg(); setSound.blur(); });
+  $("setReset").addEventListener("click", e => { cfg.snakeColor = DEF_SNAKE; cfg.mapColor = DEF_MAP; applyLook(); saveCfg(); e.currentTarget.blur(); });
 
   /* ---------- game logic ---------- */
   function reset() {
     clearTimeout(overTimer); runId++; applyConfig();
+    wallSeed = (Math.random() * 2147483647) | 0;
     const cy = Math.floor(ROWS / 2);
     snake = [{x:5,y:cy},{x:4,y:cy},{x:3,y:cy}];
     prev = snake.map(s => ({...s}));
@@ -388,7 +462,7 @@ function isBadName(raw) {
     const free = [];
     const x0 = INF ? snake[0].x - 8 : 0, y0 = INF ? snake[0].y - 7 : 0;   // infinite: spawn in the view around the head
     for (let y = y0; y < y0 + ROWS; y++) for (let x = x0; x < x0 + COLS; x++)
-      if (!taken.has(x + "," + y)) free.push({x, y});
+      if (!taken.has(x + "," + y) && !isWall(x, y)) free.push({x, y});
     if (free.length) { const c = free[Math.floor(Math.random() * free.length)]; foods.push({ x: c.x, y: c.y, born: performance.now() }); }
   }
 
@@ -419,7 +493,7 @@ function isBadName(raw) {
   function tick() {
     if (queue.length) dir = queue.shift();
     const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
-    const hitWall = !INF && (head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS);
+    const hitWall = (!INF && (head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS)) || isWall(head.x, head.y);
     const fi = hitWall ? -1 : foods.findIndex(f => f.x === head.x && f.y === head.y), eating = fi >= 0;
     const body = eating ? snake : snake.slice(0, -1);
     if (hitWall || body.some(s => s.x === head.x && s.y === head.y)) { return finish("over"); }
@@ -457,7 +531,7 @@ function isBadName(raw) {
     const k = canvas.width / LW, sh = PERF ? 0 : shake * 8 * k;
     ctx.setTransform(k, 0, 0, k, (Math.random() - .5) * sh, (Math.random() - .5) * sh);
 
-    // checkerboard
+    // checkerboard (+ walls in infinite mode)
     let gx = 0, gy = 0;
     if (INF) {
       const t0 = state === "running" || state === "paused" ? Math.min(1, acc / delay) : 1;
@@ -465,8 +539,17 @@ function isBadName(raw) {
       ctx.translate(-cx, -cy); gx = Math.floor(cx / CELL); gy = Math.floor(cy / CELL);
     }
     for (let y = gy; y <= gy + ROWS; y++) for (let x = gx; x <= gx + COLS; x++) {
-      ctx.fillStyle = (x + y) & 1 ? "#a2d149" : "#aad751";
+      ctx.fillStyle = (x + y) & 1 ? tileB : tileA;
       ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+      if (INF && isWall(x, y)) {
+        const wx = x * CELL, wy = y * CELL, o = 3;
+        ctx.fillStyle = "#fff"; ctx.fillRect(wx, wy, CELL, CELL);
+        ctx.fillStyle = "#000";                                  // outline only on edges not shared with another wall
+        if (!isWall(x, y - 1)) ctx.fillRect(wx, wy, CELL, o);
+        if (!isWall(x, y + 1)) ctx.fillRect(wx, wy + CELL - o, CELL, o);
+        if (!isWall(x - 1, y)) ctx.fillRect(wx, wy, o, CELL);
+        if (!isWall(x + 1, y)) ctx.fillRect(wx + CELL - o, wy, o, CELL);
+      }
     }
 
     // food (pops in with a little overshoot, then sits still)
@@ -507,13 +590,13 @@ function isBadName(raw) {
     }
     path.lineTo(pts[m - 1].x, pts[m - 1].y);
     if (!PERF) { ctx.save(); ctx.translate(0, 5); ctx.strokeStyle = "rgba(0,0,0,.16)"; ctx.lineWidth = CELL * 0.74; ctx.stroke(path); ctx.restore(); }
-    ctx.strokeStyle = "#4e7cf6"; ctx.lineWidth = CELL * 0.74; ctx.stroke(path);
+    ctx.strokeStyle = SNAKE; ctx.lineWidth = CELL * 0.74; ctx.stroke(path);
     if (!PERF) { ctx.save(); ctx.translate(0, -3); ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = CELL * 0.3; ctx.stroke(path); ctx.restore(); }
 
     // head
     const h = H, fx = Math.cos(ang), fy = Math.sin(ang), px = -fy, py = fx;
     if (!PERF) { ctx.fillStyle = "rgba(0,0,0,.16)"; ctx.beginPath(); ctx.arc(h.x, h.y + 5, CELL * 0.42, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = "#4e7cf6"; ctx.beginPath(); ctx.arc(h.x, h.y, CELL * 0.42, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = SNAKE; ctx.beginPath(); ctx.arc(h.x, h.y, CELL * 0.42, 0, Math.PI * 2); ctx.fill();
     for (const side of [-1, 1]) {
       const ex = h.x + fx * CELL * 0.1 + px * side * CELL * 0.2;
       const ey = h.y + fy * CELL * 0.1 + py * side * CELL * 0.2;
@@ -616,7 +699,7 @@ function isBadName(raw) {
   /* ---------- input ---------- */
   window.addEventListener("keydown", e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (lbOpen) { if (e.key === "Escape") closeLb(); return; }
+    if (lbOpen || setOpen) { if (e.key === "Escape") { closeLb(); closeSettings(); } return; }
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;     // typing a name
     const name = KEYMAP[e.key];
     if (name) {
@@ -626,7 +709,7 @@ function isBadName(raw) {
     } else if (e.code === "Space") {
       e.preventDefault(); if (!e.repeat) startOrToggle();
     } else if (e.key === "m" || e.key === "M") {
-      muted = !muted;
+      muted = !muted; cfg.sound = muted ? "off" : "on"; setSound.value = cfg.sound; saveCfg();
     } else if (e.key === "r" || e.key === "R") {
       reset();
     } else if (e.key === "Enter" && state !== "running") {
