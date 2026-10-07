@@ -173,7 +173,6 @@
 (() => {
   "use strict";
   let COLS = 17, ROWS = 15, LW, LH; const CELL = 40;           // logical units
-  
 
   // Deployed leaderboard Worker URL (no trailing slash; the game adds /scores itself)
   const API_URL = "https://snake.bleepbloop-ai.workers.dev";
@@ -212,8 +211,8 @@
   try { best = parseInt(localStorage.getItem("snake-best"), 10) || 0; } catch (e) {}
   bestEl.textContent = best;
 
-  let snake, prev, dir, queue, food, foodBorn, score, delay, state, acc, last, deathAt, overTimer, grew, waiting = false, foods = [], ang = 0, shake = 0, lastFrame = 0, particles = [], wallSeed = 0;
-  // state: ready | running | paused | over | won
+  let snake, prev, dir, queue, food, foodBorn, score, delay, state, acc, last, deathAt, overTimer, grew, waiting = false, cdT = 0, foods = [], ang = 0, shake = 0, lastFrame = 0, particles = [], wallSeed = 0;
+  // state: ready | running | paused | countdown | over | won
 
   let runId = 0, pendingSave = null;
 
@@ -486,6 +485,7 @@ function isBadName(raw) {
     else if (state === "running") { state = "paused"; showOverlay("Paused", "Press Space to resume", "Resume"); return; }
     else if (state === "paused") { state = "running"; hideOverlay(); }
     else if (state === "over" || state === "won") { reset(); state = "running"; hideOverlay(); }
+    else return;                          // countdown: nothing to toggle
     waiting = true;                       // hold still until the player presses a direction
     last = performance.now();
   }
@@ -510,10 +510,21 @@ function isBadName(raw) {
         try { localStorage.setItem("snake-best", String(best)); } catch (e) {}
       }
       foods.splice(fi, 1); placeFood();
-      if (!foods.length) finish("won");
+      if (!foods.length) return nextRound();            // map beaten: new round, score carries over
     } else snake.pop();
     if (INF) for (let i = foods.length - 1; i >= 0; i--)      // apples left far behind respawn near the snake
       if (Math.abs(foods[i].x - head.x) > 10 || Math.abs(foods[i].y - head.y) > 9) { foods.splice(i, 1); placeFood(); }
+  }
+
+  function nextRound() {          // map beaten: fresh board, keep the score, 3-2-1, then keep going until you die
+    wallSeed = (Math.random() * 2147483647) | 0;
+    const cy = Math.floor(ROWS / 2);
+    snake = [{x:5,y:cy},{x:4,y:cy},{x:3,y:cy}];
+    prev = snake.map(s => ({...s}));
+    dir = DIRS.right; ang = 0; queue = []; acc = 0; waiting = false;
+    foods = []; for (let i = 0; i < cfg.apples; i++) placeFood();
+    state = "countdown"; cdT = 0;
+    beep(600, 1200, .4);
   }
 
   function finish(result) {
@@ -620,6 +631,16 @@ function isBadName(raw) {
       ctx.fillStyle = "#fff"; ctx.font = "600 18px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText("Press an arrow key or swipe", LW / 2, y + h / 2);
     }
+    if (state === "countdown") {                               // 3-2-1 before the next round
+      ctx.setTransform(k, 0, 0, k, 0, 0);
+      const f = cdT % 1;
+      ctx.fillStyle = "rgba(30,55,15,.35)"; ctx.fillRect(0, 0, LW, LH);
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = "700 24px sans-serif"; ctx.fillText("Map cleared! Next round starts in", LW / 2, LH / 2 - CELL * 2.6);
+      ctx.globalAlpha = 1 - f * .6; ctx.font = "800 " + Math.round(CELL * 3 * (1.15 - f * .3)) + "px sans-serif";
+      ctx.fillText(String(Math.ceil(3 - cdT)), LW / 2, LH / 2);
+      ctx.globalAlpha = 1;
+    }
   }
 
   function drawApple(cx, cy, s) {
@@ -653,6 +674,7 @@ function isBadName(raw) {
     shake = Math.max(0, shake - dt * 2.5);
     for (const q of particles) { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= .93; q.vy *= .93; q.life -= dt * 2.2; }
     particles = particles.filter(q => q.life > 0);
+    if (state === "countdown" && !lbOpen && !setOpen && (cdT += dt) >= 3) { state = "running"; acc = 0; last = now; }
     if (state === "running" && !waiting) {
       acc += Math.min(now - last, 100);
       last = now;
