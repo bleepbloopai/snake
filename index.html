@@ -6,6 +6,7 @@
 <title>Snake</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="favicon.png">
+<link rel="preconnect" href="https://snake.bleepbloop-ai.workers.dev">
 <style>
   :root {
     --bar: #4a752c; --page: #578a34; --a: #aad751; --b: #a2d149;
@@ -19,8 +20,13 @@
     background: var(--page); display: flex; align-items: center; justify-content: center;
     font-family: "Google Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    padding: 56px 0 12px;      /* keeps the board clear of the Leaderboards / Settings buttons */
   }
-  .game { width: min(96vw, 680px, calc((100vh - 24px) * var(--ar, 1.02))); }
+  /* board = biggest size that fits the screen width AND height (bar 56px + top buttons 56px + margin 12px), max ~48px squares */
+  .game { width: min(96vw, var(--maxw, 612px), calc((100vh - 124px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * var(--ar, 1))); }
+  @supports (height: 100dvh) {
+    .game { width: min(96vw, var(--maxw, 612px), calc((100dvh - 124px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * var(--ar, 1))); }
+  }
   .bar {
     background: var(--bar); color: #fff; height: 56px; padding: 0 18px;
     display: flex; align-items: center; justify-content: center; gap: 36px;
@@ -178,7 +184,7 @@
   const API_URL = "https://snake.bleepbloop-ai.workers.dev";
 
   const SPEEDS = { slow: 179.55, normal: 1000 / 7.41, fast: 89.1 };     // ms per square (5.57 / 7.41 / 11.22 squares per second)
-  const MAPS = { small: [10, 9], standard: [17, 15], large: [24, 21], infinite: [17, 15] };  // [columns, rows]
+  const MAPS = { small: [9, 10], standard: [15, 17], large: [21, 24], infinite: [17, 15] };  // [columns, rows]
   const DEF_SNAKE = "#4e7cf6", DEF_MAP = "#aad751";
   let cfg = { speed: "normal", map: "standard", apples: 1, perf: "off", sound: "on", snakeColor: DEF_SNAKE, mapColor: DEF_MAP };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem("snake-cfg"))); } catch (e) {}
@@ -317,7 +323,7 @@ function isBadName(raw) {
 
   async function postScore(name, sc, mode) {
     if (API_URL) {
-      for (let attempt = 0; attempt < 2; attempt++) {     // one retry if the 15s cooldown rejects us
+      for (let attempt = 0; attempt < 2; attempt++) {     // one retry if the 3s cooldown rejects us
         try {
           const r = await fetch(API_URL + "/scores", {
             method: "POST", headers: { "Content-Type": "application/json" },
@@ -326,7 +332,7 @@ function isBadName(raw) {
           if (r.ok) return { rows: await r.json(), global: true };
           if (r.status !== 429) break;
         } catch (e) { break; }
-        await new Promise(res => setTimeout(res, 15500));
+        await new Promise(res => setTimeout(res, 3200));
       }
     }
     const rows = getLocal(mode);
@@ -414,7 +420,8 @@ function isBadName(raw) {
   function applyConfig() {
     [COLS, ROWS] = MAPS[cfg.map]; INF = cfg.map === "infinite"; curMode = cfg.map + "-" + cfg.speed; LW = COLS * CELL; LH = ROWS * CELL;
     cfg.apples = Math.max(1, Math.min(cfg.apples | 0 || 1, COLS * ROWS - 3));
-    document.documentElement.style.setProperty("--ar", COLS / (ROWS + 1.6));
+    document.documentElement.style.setProperty("--ar", COLS / ROWS);
+    document.documentElement.style.setProperty("--maxw", COLS * 48 + "px");
     setApples.max = COLS * ROWS - 3; setApples.value = cfg.apples; setSpeed.value = cfg.speed; setMap.value = cfg.map;
     applyLook();
     resize();
