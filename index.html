@@ -418,7 +418,9 @@ function isBadName(raw) {
   window.addEventListener("resize", resize);
 
   function applyConfig() {
-    [COLS, ROWS] = MAPS[cfg.map]; INF = cfg.map === "infinite"; curMode = cfg.map + "-" + cfg.speed; LW = COLS * CELL; LH = ROWS * CELL;
+    [COLS, ROWS] = MAPS[cfg.map]; INF = cfg.map === "infinite"; curMode = cfg.map + "-" + cfg.speed;
+    if (!INF && window.matchMedia("(pointer: fine)").matches) [COLS, ROWS] = [ROWS, COLS];   // PC: invert map sizes (wide instead of tall)
+    LW = COLS * CELL; LH = ROWS * CELL;
     cfg.apples = Math.max(1, Math.min(cfg.apples | 0 || 1, COLS * ROWS - 3));
     document.documentElement.style.setProperty("--ar", COLS / ROWS);
     document.documentElement.style.setProperty("--maxw", COLS * 48 + "px");
